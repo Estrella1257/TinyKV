@@ -39,5 +39,8 @@ TinyObj* ht_get(HashTable *ht, char *key);
 void ht_delete(HashTable *ht, char *key);
 void ht_dump(HashTable *ht);
 
+void kv_save(HashTable *ht, const char *filename);
+HashTable* kv_load(const char *filename);
+
 
 #endif
