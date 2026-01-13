@@ -103,3 +103,31 @@ void ht_dump(HashTable *ht) {
         }
     }
 }
+
+void ht_delete(HashTable *ht, char *key) {
+    unsigned long index = hash_function(key) % ht->size;
+
+    Entry *current = ht->buckets[index];
+    Entry *prev = NULL;
+
+    while (current != NULL) {
+        if (strcmp(current->key, key) == 0) {
+            if (prev == NULL) {
+                ht->buckets[index] = current->next;
+            }
+            else {
+                prev->next = current->next;
+            }
+
+            free(current->key);
+            obj_free(current->value);
+            free(current);
+
+            ht->count--;
+            return;
+        }
+
+        prev = current;
+        current = current->next;
+    }
+}
