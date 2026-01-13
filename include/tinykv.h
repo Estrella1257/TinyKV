@@ -42,8 +42,9 @@ void ht_dump(HashTable *ht);
 void kv_save(HashTable *ht, const char *filename);
 HashTable* kv_load(const char *filename);
 
-void wal_log_set(char *key, TinyObj *value);
-void wal_log_del(char *key);
+void wal_check_gc(HashTable *ht);
+void wal_log_set(HashTable *ht, char *key, TinyObj *value);
+void wal_log_del(HashTable *ht, char *key); 
 void wal_recover(HashTable *ht, const char *filename);
 
 #endif

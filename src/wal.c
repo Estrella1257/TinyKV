@@ -4,8 +4,34 @@
 #include "tinykv.h"
 
 #define WAL_FILE "tinykv.log"
+#define DB_FILE  "tinykv.db"
+#define TMP_FILE "tinykv.tmp"
+#define GC_THRESHOLD 200 
 
-void wal_log_set(char *key, TinyObj *value) {
+void wal_check_gc(HashTable *ht) {
+    FILE *fp = fopen(WAL_FILE, "r");
+    if (!fp) return;
+
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    fclose(fp);
+
+    if (size < GC_THRESHOLD) return;
+
+    printf("\n[GC] Log size %ld > %d. Triggering COMPACTION...\n", size, GC_THRESHOLD);
+
+    kv_save(ht, TMP_FILE);
+
+    if (rename(TMP_FILE, DB_FILE) == 0) {
+        FILE *fp_clear = fopen(WAL_FILE, "w");
+        if (fp_clear) fclose(fp_clear);
+        printf("[GC] Checkpoint created. Log cleared.\n");
+    } else {
+        perror("[GC] Rename failed");
+    }
+}
+
+void wal_log_set(HashTable *ht, char *key, TinyObj *value) {
     FILE *fp = fopen(WAL_FILE, "a");
     if (!fp) {
         perror("WAL open failed!");
@@ -24,9 +50,11 @@ void wal_log_set(char *key, TinyObj *value) {
     }
     fflush(fp);
     fclose(fp);
+
+    wal_check_gc(ht);
 } 
 
-void wal_log_del(char *key) {
+void wal_log_del(HashTable *ht, char *key) {
     FILE *fp = fopen(WAL_FILE, "a");
     if (!fp) return;
 
@@ -34,9 +62,41 @@ void wal_log_del(char *key) {
     
     fflush(fp); 
     fclose(fp);
+
+    wal_check_gc(ht);
 }
 
 void wal_recover(HashTable *ht, const char *filename) {
+    HashTable *snapshot = kv_load(DB_FILE);
+    if (snapshot) {
+        printf("[Recover] Found snapshot %s. Merging into memory...\n", DB_FILE);
+        
+        for (size_t i = 0; i < snapshot->size; i++) {
+            Entry *entry = snapshot->buckets[i];
+            while (entry) {
+                TinyObj *new_obj = NULL;
+                
+                if (entry->value->type == T_INT) {
+                    new_obj = obj_create_int(*(int*)(entry->value->ptr));
+                } 
+                else if (entry->value->type == T_STRING) {
+                    new_obj = obj_create_string((char*)(entry->value->ptr));
+                }
+                
+                if (new_obj) {
+                    ht_set(ht, entry->key, new_obj);
+                }
+                
+                entry = entry->next;
+            }
+        }
+        
+        ht_free(snapshot); 
+        printf("[Recover] Snapshot merge complete.\n");
+    } else {
+        printf("[Recover] No snapshot found. Starting fresh or from WAL only.\n");
+    }
+
     FILE *fp = fopen(filename, "r");
     if (!fp) return;
 
